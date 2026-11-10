@@ -1,0 +1,5 @@
+node_modules/
+dist/
+backend/backend
+backend/dashboard-backend
+*.log

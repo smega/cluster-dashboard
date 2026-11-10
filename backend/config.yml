@@ -1,0 +1,19 @@
+# config.yml
+# Copy this file, fill in real values, and keep the copy out of git
+# (this one is a sample/template, not meant to hold live secrets).
+server:
+  address: ":8080"
+  allowed_origins:
+  - "https://your-domain.example" # or "*" during local dev
+
+mongo:
+  uri: "mongodb+srv://username:password@cluster0.example.mongodb.net/?retryWrites=true&w=majority"
+  database: "dashboard"
+
+auth:
+  # Generate a long random string, e.g.: openssl rand -hex 32
+  jwt_secret: "REPLACE_WITH_RANDOM_SECRET"
+  token_ttl_minutes: 60
+  bcrypt_cost: 12
+kube:
+  kubeconfig: "" # leave empty in-cluster; for local dev, point to your kubeconfig
