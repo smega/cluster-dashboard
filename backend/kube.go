@@ -10,6 +10,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"go.mongodb.org/mongo-driver/bson"
+	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
@@ -52,7 +53,13 @@ func initKube(ctx context.Context) error {
 		return err
 	}
 
+	dynClient, err := dynamic.NewForConfig(restCfg)
+	if err != nil {
+		return err
+	}
+
 	kubeClient = clientset
+	kubeDynamic = dynClient
 	log.Printf("Kubernetes client initialized")
 	return nil
 }
