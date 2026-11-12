@@ -10,6 +10,8 @@ export default function OverviewPage({ token, user }) {
   const [error, setError] = useState('');
   const [lastUpdated, setLastUpdated] = useState(null);
 
+  const [history, setHistory] = useState(null);
+
   // Toasts (same pattern as other pages)
   const [toasts, setToasts] = useState([]);
   const pushToast = (type, message) => {
@@ -67,6 +69,29 @@ export default function OverviewPage({ token, user }) {
   useEffect(() => {
     fetchOverview(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token, tick]);
+
+  // Resource usage history (for the mini sparklines) -- cheap, best-effort.
+  useEffect(() => {
+    if (!token) return;
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const res = await fetch('/api/kube/metrics/history', {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok) return;
+        const json = await res.json();
+        if (!cancelled) setHistory(json);
+      } catch {
+        // best-effort; sparklines just stay empty
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [token, tick]);
 
   // Optional auto-refresh every 20s (lightweight; just one endpoint)
@@ -132,6 +157,34 @@ export default function OverviewPage({ token, user }) {
           </div>
         </div>
 
+        {/* About this demo */}
+        <div class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+          <h2 class="text-sm font-semibold text-slate-800">About this demo</h2>
+          <p class="mt-1 text-xs text-slate-600 leading-relaxed">
+            A readonly viewer for a small k3s cluster running on a few Raspberry
+            Pis at home. No write access anywhere (no exec, delete, scale or
+            secret reads) -- this is just a window into what's actually running.
+          </p>
+          <div class="mt-2 flex flex-wrap gap-3 text-[11px] font-mono">
+            <a
+              class="text-blue-700 hover:underline"
+              href="https://github.com/smega/raspberry-k3s"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              raspberry-k3s (cluster manifests) ↗
+            </a>
+            <a
+              class="text-blue-700 hover:underline"
+              href="https://github.com/smega/cluster-dashboard"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              cluster-dashboard (this app) ↗
+            </a>
+          </div>
+        </div>
+
         {/* Error */}
         {error && (
           <div class="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
@@ -155,6 +208,24 @@ export default function OverviewPage({ token, user }) {
               <StatCard label="Nodes" value={stats.nodes} />
               <StatCard label="Pods" value={stats.pods} />
               <StatCard label="Deployments" value={stats.deployments} />
+            </div>
+
+            {/* Resource usage trend (sparklines) */}
+            <div class="grid gap-3 md:grid-cols-2">
+              <SparkTile
+                label="Cluster CPU usage"
+                samples={history?.samples}
+                metric="cpuPct"
+                accent="#2a78d6"
+                warning={history?.warning}
+              />
+              <SparkTile
+                label="Cluster memory usage"
+                samples={history?.samples}
+                metric="memPct"
+                accent="#eb6834"
+                warning={history?.warning}
+              />
             </div>
 
             {/* Health summary cards */}
@@ -288,23 +359,6 @@ export default function OverviewPage({ token, user }) {
                                     title="Open Pods page filtered to this pod"
                                   >
                                     View
-                                  </button>
-
-                                  <button
-                                    type="button"
-                                    class="rounded-lg border border-slate-300 bg-white px-2 py-1 text-[11px] text-slate-700 hover:bg-slate-100"
-                                    onClick={(e) => {
-                                      e.preventDefault();
-                                      e.stopPropagation();
-                                      route(
-                                        `/logs?ns=${encodeURIComponent(ns)}&pod=${encodeURIComponent(
-                                          pod
-                                        )}`
-                                      );
-                                    }}
-                                    title="Open Logs page for this pod"
-                                  >
-                                    Logs
                                   </button>
                                 </div>
                               </td>
@@ -505,6 +559,63 @@ export default function OverviewPage({ token, user }) {
         ))}
       </div>
     </>
+  );
+}
+
+function SparkTile({ label, samples, metric, accent, warning }) {
+  const pts = (samples || []).filter((s) => typeof s[metric] === 'number');
+  const current = pts.length > 0 ? pts[pts.length - 1][metric] : null;
+
+  return (
+    <div class="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+      <div class="flex items-center justify-between mb-1">
+        <div class="text-[11px] text-slate-500">{label}</div>
+        <div class="text-sm font-semibold text-slate-900 font-mono">
+          {current === null ? '-' : `${current.toFixed(0)}%`}
+        </div>
+      </div>
+      {pts.length >= 2 ? (
+        <Sparkline points={pts.map((s) => s[metric])} accent={accent} />
+      ) : (
+        <div class="h-9 flex items-center text-[11px] text-slate-400 font-mono">
+          {warning ? warning : 'collecting data…'}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Sparkline({ points, accent }) {
+  const width = 240;
+  const height = 36;
+  const padY = 4;
+
+  const n = points.length;
+  const max = Math.max(100, ...points); // keep 0-100% framing, allow slight overflow
+  const toXY = (v, i) => {
+    const x = (i / (n - 1)) * width;
+    const y = padY + (1 - v / max) * (height - padY * 2);
+    return [x, y];
+  };
+
+  const coords = points.map((v, i) => toXY(v, i));
+  const mutedPath = coords.map(([x, y], i) => `${i === 0 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`).join(' ');
+
+  const [lastX, lastY] = coords[coords.length - 1];
+  const [prevX, prevY] = coords[coords.length - 2];
+
+  return (
+    <svg width="100%" height={height} viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" class="block">
+      <path d={mutedPath} fill="none" stroke="#c3c2b7" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" />
+      <path
+        d={`M${prevX.toFixed(1)},${prevY.toFixed(1)} L${lastX.toFixed(1)},${lastY.toFixed(1)}`}
+        fill="none"
+        stroke={accent}
+        stroke-width="2"
+        stroke-linecap="round"
+      />
+      <circle cx={lastX} cy={lastY} r="4" fill={accent} stroke="#fff" stroke-width="2" />
+    </svg>
   );
 }
 

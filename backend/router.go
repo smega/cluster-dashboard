@@ -107,6 +107,9 @@ func setupRouter() *gin.Engine {
 			// Cost waste signals
 			protected.GET("/kube/waste", handleWasteSignals)
 
+			// Cluster resource usage history (sparklines)
+			protected.GET("/kube/metrics/history", metricsHistoryHandler)
+
 			// Kubernetes overview
 			protected.GET("/overview", clusterOverviewHandler)
 
