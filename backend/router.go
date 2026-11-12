@@ -22,26 +22,16 @@ func setupRouter() *gin.Engine {
 			// pods
 			protected.GET("/pods", podsHandler)
 			protected.GET("/pods/:namespace/:name", podDetailHandler)
-			protected.POST("/pods/:namespace/:name/restart", restartPodHandler)
-			protected.DELETE("/pods/:namespace/:name", deletePodHandler)
 			protected.GET("/pods/stream", podsStreamHandler) // SSE
 
 			// deployments
 			protected.GET("/deployments", deploymentsHandler)
 			protected.GET("/deployments/:namespace/:name", deploymentDetailHandler)
-			protected.POST("/deployments/:namespace/:name/scale", scaleDeploymentHandler)
-			protected.POST("/deployments/namespace/:namespace/scale-bulk", bulkScaleDeploymentsHandler)
 			protected.GET("/deployments/stream", deploymentsStreamHandler) // SSE
-
-			// logs
-			protected.GET("/logs", logsHandler)
-			protected.GET("/logs/stream", logsStreamHandler)
 
 			// rbac
 			protected.GET("/rbac/namespaces", rbacNamespacesHandler)
 			protected.GET("/rbac/namespace/:namespace/summary", rbacNamespaceSummaryHandler)
-			protected.POST("/rbac/binding/add", rbacAddBindingHandler)
-			protected.POST("/rbac/binding/remove", rbacRemoveBindingHandler)
 			protected.GET("/rbac/role", rbacRoleDetailHandler)
 
 			// services
@@ -53,21 +43,16 @@ func setupRouter() *gin.Engine {
 			// volumes
 			protected.GET("/volumes", volumesListHandler)
 
-			// Exec endpoints
-			protected.POST("/exec/command", execCommandHandler)
-			protected.POST("/exec/script", execScriptHandler)
-
 			// kube batch (jobs/cronjobs)
 			protected.GET("/kube/namespaces", kubeNamespacesHandler)
 			protected.GET("/kube/batch", kubeBatchListHandler)
 			protected.GET("/kube/cronjobs/:namespace/:name", kubeCronJobDetailHandler)
 			protected.GET("/kube/jobs/:namespace/:name", kubeJobDetailHandler)
 
-			// kube config inventory
+			// kube config inventory (ConfigMaps only -- Secrets are
+			// deliberately not exposed by this API at all)
 			protected.GET("/kube/configmaps", kubeConfigMapsListHandler)
 			protected.GET("/kube/configmaps/:namespace/:name", kubeConfigMapDetailHandler)
-			protected.GET("/kube/secrets", kubeSecretsListHandler)
-			protected.GET("/kube/secrets/:namespace/:name", kubeSecretDetailHandler)
 
 			// autoscaling: HPA / VPA / PDB
 			protected.GET("/kube/hpas", kubeHPAsListHandler)
@@ -89,8 +74,6 @@ func setupRouter() *gin.Engine {
 			// statefulsets
 			protected.GET("/statefulsets", statefulSetsHandler)
 			protected.GET("/statefulsets/:namespace/:name", statefulSetDetailHandler)
-			protected.POST("/statefulsets/:namespace/:name/scale", scaleStatefulSetHandler)
-			protected.POST("/statefulsets/namespace/:namespace/scale-bulk", bulkScaleStatefulSetsHandler)
 			protected.GET("/statefulsets/stream", statefulSetsStreamHandler) // SSE
 
 			// storage inventory

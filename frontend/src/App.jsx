@@ -7,12 +7,10 @@ import LoginPage from './LoginPage.jsx';
 import OverviewPage from './pages/OverviewPage.jsx';
 import PodsPage from './pages/PodsPage.jsx';
 import DeploymentsPage from './pages/DeploymentsPage.jsx';
-import LogsPage from './pages/LogsPage.jsx';
 import RbacPage from './pages/RbacPage.jsx';
 import ServicesPage from './pages/ServicesPage.jsx';
 import IngressesPage from './pages/IngressesPage.jsx';
 import VolumesPage from './pages/VolumesPage.jsx';
-import ExecPage from './pages/ExecPage.jsx';
 import JobsTab from "./pages/JobsPage.jsx";
 import ConfigPage from './pages/ConfigPage.jsx';
 import AutoscalingPage from './pages/HpaPage.jsx';
@@ -25,21 +23,12 @@ import ImageProvenancePage from './pages/ImageProvenancePage.jsx';
 import CostWasteSignalsPage from './pages/CostWasteSignalsPage.jsx';
 import Topology from './pages/TopologyPage.jsx';
 
-// NEW: tools area
-import ToolsPage from './pages/ToolsPage.jsx';
-
 const API_BASE = '';
 
 export default function App() {
   const [token, setToken] = useState(null);
   const [user, setUser] = useState(null);
   const [checking, setChecking] = useState(true);
-
-  // Track current route so we can switch "areas" (Ops vs Tools)
-  const [currentUrl, setCurrentUrl] = useState(() => {
-    if (typeof window === 'undefined') return '/';
-    return window.location?.pathname || '/';
-  });
 
   useEffect(() => {
     const stored = localStorage.getItem('auth_token');
@@ -115,8 +104,6 @@ export default function App() {
     return <LoginPage onLoggedIn={handleLoggedIn} />;
   }
 
-  const isToolsArea = (currentUrl || '').startsWith('/tools');
-
   return (
     <div class="min-h-screen bg-slate-100 text-slate-900 flex flex-col">
       {/* Top bar */}
@@ -144,11 +131,8 @@ export default function App() {
           </div>
         </div>
 
-        {/* Right side: Ops/Tools switch + Logout */}
+        {/* Right side: Logout */}
         <div class="flex items-center gap-2">
-          <ModeLink href="/" active={!isToolsArea}>Ops</ModeLink>
-          <ModeLink href="/tools" active={isToolsArea}>Tools</ModeLink>
-
           <button
             class="px-3 py-1.5 rounded-lg text-xs font-medium border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 shadow-sm"
             onClick={handleLogout}
@@ -159,46 +143,40 @@ export default function App() {
         </div>
       </header>
 
-      {/* Ops Nav (hide when in Tools area) */}
-      {!isToolsArea && (
-        <div class="px-6 pt-4 bg-slate-100 border-b border-slate-200">
-          <div class="inline-flex flex-wrap items-center gap-1 gap-y-1 rounded-2xl bg-slate-200/80 p-1 text-xs font-medium">
-            <NavLink href="/" exact>Overview</NavLink>
-            <NavLink href="/deployments">Deployments</NavLink>
-            <NavLink href="/pods">Pods</NavLink>
-            <NavLink href="/services">Services</NavLink>
-            <NavLink href="/ingresses">Ingresses</NavLink>
-            <NavLink href="/volumes">Volumes</NavLink>
-            <NavLink href="/logs">Logs</NavLink>
-            <NavLink href="/rbac">RBAC</NavLink>
-            <NavLink href="/exec">Exec</NavLink>
-            <NavLink href="/jobs">Jobs</NavLink>
-            <NavLink href="/config">Config</NavLink>
-            <NavLink href="/autoscaling">Autoscaling</NavLink>
-            <NavLink href="/events">Events</NavLink>
-            <NavLink href="/statefulsets">StatefulSets</NavLink>
-            <NavLink href="/storage">Storage</NavLink>
-            <NavLink href="/nodes">Nodes</NavLink>
-            <NavLink href="/network-policies">Network Policies</NavLink>
-            <NavLink href="/image-provenance">Image Provenance</NavLink>
-            <NavLink href="/cost-waste-signals">Cost Waste Signals</NavLink>
-            <NavLink href="/topology">Topology</NavLink>
-          </div>
+      {/* Ops Nav */}
+      <div class="px-6 pt-4 bg-slate-100 border-b border-slate-200">
+        <div class="inline-flex flex-wrap items-center gap-1 gap-y-1 rounded-2xl bg-slate-200/80 p-1 text-xs font-medium">
+          <NavLink href="/" exact>Overview</NavLink>
+          <NavLink href="/deployments">Deployments</NavLink>
+          <NavLink href="/pods">Pods</NavLink>
+          <NavLink href="/services">Services</NavLink>
+          <NavLink href="/ingresses">Ingresses</NavLink>
+          <NavLink href="/volumes">Volumes</NavLink>
+          <NavLink href="/rbac">RBAC</NavLink>
+          <NavLink href="/jobs">Jobs</NavLink>
+          <NavLink href="/config">Config</NavLink>
+          <NavLink href="/autoscaling">Autoscaling</NavLink>
+          <NavLink href="/events">Events</NavLink>
+          <NavLink href="/statefulsets">StatefulSets</NavLink>
+          <NavLink href="/storage">Storage</NavLink>
+          <NavLink href="/nodes">Nodes</NavLink>
+          <NavLink href="/network-policies">Network Policies</NavLink>
+          <NavLink href="/image-provenance">Image Provenance</NavLink>
+          <NavLink href="/cost-waste-signals">Cost Waste Signals</NavLink>
+          <NavLink href="/topology">Topology</NavLink>
         </div>
-      )}
+      </div>
 
       {/* Routed content */}
       <main class="flex-1 px-6 py-5">
-        <Router onChange={(e) => setCurrentUrl(e?.url || '/')}>
+        <Router>
           <OverviewPage path="/" user={user} token={token} />
           <DeploymentsPage path="/deployments" user={user} token={token} />
           <PodsPage path="/pods" user={user} token={token} />
           <ServicesPage path="/services" user={user} token={token} />
           <IngressesPage path="/ingresses" user={user} token={token} />
           <VolumesPage path="/volumes" user={user} token={token} />
-          <LogsPage path="/logs" user={user} token={token} />
           <RbacPage path="/rbac" user={user} token={token} />
-          <ExecPage path="/exec" user={user} token={token} />
           <JobsTab path="/jobs" user={user} token={token} />
           <ConfigPage path="/config" user={user} token={token} />
           <AutoscalingPage path="/autoscaling" user={user} token={token} />
@@ -210,9 +188,6 @@ export default function App() {
           <ImageProvenancePage path="/image-provenance" user={user} token={token} />
           <CostWasteSignalsPage path="/cost-waste-signals" user={user} token={token} />
           <Topology path="/topology" user={user} token={token} />
-
-          {/* NEW: Tools area */}
-          <ToolsPage path="/tools/:tool?" user={user} token={token} />
         </Router>
       </main>
     </div>
@@ -232,18 +207,3 @@ function NavLink({ href, exact, children }) {
   );
 }
 
-function ModeLink({ href, active, children }) {
-  return (
-    <Link
-      href={href}
-      className={
-        'px-3 py-1.5 rounded-lg text-xs font-medium border shadow-sm transition ' +
-        (active
-          ? 'border-slate-300 bg-slate-900 text-white'
-          : 'border-slate-300 bg-white hover:bg-slate-50 text-slate-700')
-      }
-    >
-      {children}
-    </Link>
-  );
-}

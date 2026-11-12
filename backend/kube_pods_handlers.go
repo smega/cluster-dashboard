@@ -245,63 +245,6 @@ func podDetailHandler(c *gin.Context) {
 	c.JSON(http.StatusOK, detail)
 }
 
-// POST /api/pods/:namespace/:name/restart  (admin only)
-// Implementation: delete the pod and let its controller recreate it.
-func restartPodHandler(c *gin.Context) {
-	if !requireAdmin(c) {
-		return
-	}
-
-	ns := c.Param("namespace")
-	name := c.Param("name")
-
-	ctx, cancel := context.WithTimeout(c.Request.Context(), 15*time.Second)
-	defer cancel()
-
-	err := kubeClient.CoreV1().Pods(ns).Delete(ctx, name, metav1.DeleteOptions{})
-	if err != nil {
-		if apierrors.IsNotFound(err) {
-			c.JSON(http.StatusNotFound, gin.H{"error": "pod not found"})
-			return
-		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("delete pod for restart: %v", err)})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"status":  "ok",
-		"message": fmt.Sprintf("pod %s/%s deleted for restart", ns, name),
-	})
-}
-
-// DELETE /api/pods/:namespace/:name  (admin only)
-func deletePodHandler(c *gin.Context) {
-	if !requireAdmin(c) {
-		return
-	}
-
-	ns := c.Param("namespace")
-	name := c.Param("name")
-
-	ctx, cancel := context.WithTimeout(c.Request.Context(), 15*time.Second)
-	defer cancel()
-
-	err := kubeClient.CoreV1().Pods(ns).Delete(ctx, name, metav1.DeleteOptions{})
-	if err != nil {
-		if apierrors.IsNotFound(err) {
-			c.JSON(http.StatusNotFound, gin.H{"error": "pod not found"})
-			return
-		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("delete pod: %v", err)})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"status":  "ok",
-		"message": fmt.Sprintf("pod %s/%s deleted", ns, name),
-	})
-}
-
 // SSE: GET /api/pods/stream
 // Emits:
 //

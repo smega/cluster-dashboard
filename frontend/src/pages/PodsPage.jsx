@@ -202,62 +202,6 @@ export default function PodsPage({ token, user, url }) {
     }
   };
 
-  // Restart pod (no confirm, toast instead)
-  const handleRestart = async () => {
-    if (!isAdmin || !selected) return;
-
-    setActionError('');
-    setActionStatus(`Restarting ${selected.namespace}/${selected.name}…`);
-    pushToast('info', `Restarting ${selected.namespace}/${selected.name}…`);
-
-    try {
-      const res = await fetch(
-        `/api/pods/${encodeURIComponent(selected.namespace)}/${encodeURIComponent(selected.name)}/restart`,
-        { method: 'POST', headers: { Authorization: `Bearer ${token}` } }
-      );
-      const text = await res.text();
-      if (!res.ok) throw new Error(text || 'Restart failed');
-
-      const msg = text || `Restart requested`;
-      setActionStatus(msg);
-      pushToast('success', msg);
-    } catch (err) {
-      console.error('restart pod failed', err);
-      const msg = err.message || 'Restart failed';
-      setActionError(msg);
-      pushToast('error', msg);
-    }
-  };
-
-  // Delete pod (no confirm, toast)
-  const handleDelete = async () => {
-    if (!isAdmin || !selected) return;
-
-    setActionError('');
-    setActionStatus(`Deleting ${selected.namespace}/${selected.name}…`);
-    pushToast('info', `Deleting ${selected.namespace}/${selected.name}…`);
-
-    try {
-      const res = await fetch(`/api/pods/${encodeURIComponent(selected.namespace)}/${encodeURIComponent(selected.name)}`, {
-        method: 'DELETE',
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const text = await res.text();
-      if (!res.ok) throw new Error(text || 'Delete failed');
-
-      const msg = text || `Pod deleted`;
-      setActionStatus(msg);
-      pushToast('success', msg);
-      setSelected(null);
-      setDetail(null);
-    } catch (err) {
-      console.error('delete pod failed', err);
-      const msg = err.message || 'Delete failed';
-      setActionError(msg);
-      pushToast('error', msg);
-    }
-  };
-
   return (
     <>
       <section class="grid gap-4 lg:grid-cols-[2fr,1.3fr]">
@@ -267,7 +211,7 @@ export default function PodsPage({ token, user, url }) {
             <div>
               <h2 class="text-sm font-semibold text-slate-800">Pods</h2>
               <p class="text-xs text-slate-500">
-                Live pod list with namespace filter and restart/delete actions.
+                Live pod list with namespace filter (readonly).
               </p>
             </div>
             <div class="flex flex-wrap items-center gap-2 text-xs">
@@ -368,25 +312,6 @@ export default function PodsPage({ token, user, url }) {
             )}
           </div>
 
-          {selected && isAdmin && (
-            <div class="mb-3 flex flex-wrap gap-2 text-[11px]">
-              <button
-                type="button"
-                class="rounded-lg border border-slate-300 bg-white px-2 py-1 text-[11px] text-slate-700 hover:bg-slate-100"
-                onClick={handleRestart}
-              >
-                Restart pod
-              </button>
-              <button
-                type="button"
-                class="rounded-lg border border-rose-300 bg-white px-2 py-1 text-[11px] text-rose-700 hover:bg-rose-50"
-                onClick={handleDelete}
-              >
-                Delete pod
-              </button>
-            </div>
-          )}
-
           {!selected && (
             <div class="text-xs text-slate-500">No pod selected. Click a row on the left to see details.</div>
           )}
@@ -460,12 +385,6 @@ function PodDetailPanel({ detail, isAdmin, actionStatus, actionError }) {
   const annotations = detail.annotations || {};
   const containers = detail.containers || [];
 
-  const ns = detail.namespace;
-  const name = detail.name;
-
-  const logsHref =
-    ns && name ? `/logs?ns=${encodeURIComponent(ns)}&pod=${encodeURIComponent(name)}` : '/logs';
-
   return (
     <div class="space-y-4 text-xs">
       <div class="flex flex-wrap items-center gap-3">
@@ -481,12 +400,6 @@ function PodDetailPanel({ detail, isAdmin, actionStatus, actionError }) {
           <div class="text-[11px] text-slate-600 font-mono">
             mode={isAdmin ? '"admin"' : '"readonly"'}
           </div>
-          <a
-            href={logsHref}
-            class="rounded-lg border border-slate-300 bg-white px-2 py-1 text-[11px] text-slate-700 hover:bg-slate-100"
-          >
-            View logs
-          </a>
         </div>
         {actionStatus && <div class="text-[11px] text-emerald-700 font-mono">{actionStatus}</div>}
         {actionError && <div class="text-[11px] text-rose-700 font-mono">{actionError}</div>}

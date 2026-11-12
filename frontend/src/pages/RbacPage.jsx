@@ -205,114 +205,6 @@ export default function RbacPage({ token, user }) {
     return names;
   }, [roleKind, roles, clusterRoles, existingForSelected]);
 
-  // Grant role to selected subject
-  const handleGrant = async () => {
-    if (!isAdmin) {
-      pushToast('error', 'Only admin users can modify RBAC.');
-      return;
-    }
-    if (!namespace || !selectedSubject) {
-      pushToast('error', 'Select a namespace and a subject first.');
-      return;
-    }
-    if (!roleName) {
-      pushToast('error', 'Select a role to grant.');
-      return;
-    }
-
-    setBusy(true);
-    setError('');
-    try {
-      const payload = {
-        namespace,
-        subjectKind: selectedSubject.kind,
-        subjectName: selectedSubject.name,
-        subjectNamespace: selectedSubject.namespace || namespace,
-        roleKind,
-        roleName
-      };
-
-      const res = await fetch('/api/rbac/binding/add', {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(payload)
-      });
-      const text = await res.text();
-      if (!res.ok) {
-        let msg = text || 'Failed to grant role';
-        try {
-          const errObj = JSON.parse(text);
-          msg = errObj.error || msg;
-        } catch {}
-        throw new Error(msg);
-      }
-
-      pushToast('success', text || 'Role granted');
-      setRefresh((r) => r + 1);
-      setRoleName('');
-    } catch (err) {
-      console.error('rbac grant failed', err);
-      const msg = err.message || 'Failed to grant role';
-      setError(msg);
-      pushToast('error', msg);
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  // Remove specific binding from selected subject
-  const handleRemoveBinding = async (binding) => {
-    if (!isAdmin) {
-      pushToast('error', 'Only admin users can modify RBAC.');
-      return;
-    }
-    if (!namespace || !selectedSubject) return;
-
-    setBusy(true);
-    setError('');
-    try {
-      const payload = {
-        namespace,
-        subjectKind: selectedSubject.kind,
-        subjectName: selectedSubject.name,
-        subjectNamespace: selectedSubject.namespace || namespace,
-        roleKind: binding.roleKind,
-        roleName: binding.roleName
-      };
-
-      const res = await fetch('/api/rbac/binding/remove', {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(payload)
-      });
-      const text = await res.text();
-      if (!res.ok) {
-        let msg = text || 'Failed to remove role';
-        try {
-          const errObj = JSON.parse(text);
-          msg = errObj.error || msg;
-        } catch {}
-        throw new Error(msg);
-      }
-
-      pushToast('success', text || 'Role removed');
-      setRefresh((r) => r + 1);
-    } catch (err) {
-      console.error('rbac remove failed', err);
-      const msg = err.message || 'Failed to remove role';
-      setError(msg);
-      pushToast('error', msg);
-    } finally {
-      setBusy(false);
-    }
-  };
-
   // Show role rules for a binding (toggle)
   const handleShowRoleInfo = async (kind, name) => {
     const k = (kind || 'Role').toString();
@@ -586,16 +478,6 @@ export default function RbacPage({ token, user }) {
                           >
                             Rules
                           </button>
-                          {isAdmin && (
-                            <button
-                              type="button"
-                              class="rounded-lg border border-rose-300 bg-white px-2 py-1 text-[10px] text-rose-700 hover:bg-rose-50 disabled:opacity-50"
-                              onClick={() => handleRemoveBinding(b)}
-                              disabled={busy}
-                            >
-                              Remove
-                            </button>
-                          )}
                         </div>
                       </div>
                     ))}
@@ -718,74 +600,6 @@ export default function RbacPage({ token, user }) {
                 </div>
               )}
 
-              {/* Grant new role */}
-              <div class="rounded-xl border border-slate-200 bg-white px-3 py-2 flex flex-col gap-2">
-                <div class="text-[11px] font-semibold text-slate-800">
-                  Grant additional role
-                </div>
-                {!isAdmin && (
-                  <div class="text-[11px] text-slate-500">
-                    You are logged in as a non-admin user; RBAC changes are
-                    read-only in this UI.
-                  </div>
-                )}
-
-                {isAdmin && (
-                  <>
-                    <div class="flex flex-wrap items-center gap-2 text-[11px]">
-                      <select
-                        class="rounded-lg border border-slate-200 bg-white px-2 py-1 text-[11px] text-slate-700"
-                        value={roleKind}
-                        onChange={(e) => {
-                          setRoleKind(e.target.value);
-                          setRoleName('');
-                        }}
-                      >
-                        <option value="Role">Role (namespaced)</option>
-                        <option value="ClusterRole">
-                          ClusterRole (cluster-wide)
-                        </option>
-                      </select>
-
-                      <select
-                        class="rounded-lg border border-slate-200 bg-white px-2 py-1 text-[11px] text-slate-700 min-w-[160px]"
-                        value={roleName}
-                        onChange={(e) => setRoleName(e.target.value)}
-                      >
-                        <option value="">Select role…</option>
-                        {availableRoleNames.map((name) => (
-                          <option key={name} value={name}>
-                            {name}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    {availableRoleNames.length === 0 && (
-                      <div class="text-[10px] text-slate-400">
-                        No additional {roleKind} entries available to grant.
-                        Define more Roles/ClusterRoles in the cluster (via
-                        YAML/Git) to offer additional permission profiles.
-                      </div>
-                    )}
-
-                    <div class="flex items-center gap-2 text-[11px] mt-1">
-                      <button
-                        type="button"
-                        class="rounded-lg border border-slate-300 bg-white px-2 py-1 text-[11px] text-slate-700 hover:bg-slate-100 disabled:opacity-50"
-                        onClick={handleGrant}
-                        disabled={busy || !roleName}
-                      >
-                        {busy ? 'Working…' : 'Grant role'}
-                      </button>
-                      <span class="text-[10px] text-slate-400">
-                        This will create or update a RoleBinding in namespace{' '}
-                        <span class="font-mono">{namespace}</span>.
-                      </span>
-                    </div>
-                  </>
-                )}
-              </div>
             </div>
           )}
         </div>

@@ -21,8 +21,6 @@ export default function DeploymentsPage({ token, user }) {
   const [actionStatus, setActionStatus] = useState('');
   const [actionError, setActionError] = useState('');
 
-  const [scaleInput, setScaleInput] = useState('');
-  const [bulkScaleInput, setBulkScaleInput] = useState('');
 
   const [liveState, setLiveState] = useState('connecting'); // connecting | open | closed
 
@@ -201,120 +199,6 @@ export default function DeploymentsPage({ token, user }) {
     }
   };
 
-  // Apply replicas for selected deployment (no confirm dialog)
-  const handleApplyScale = async () => {
-    if (!isAdmin || !selected) return;
-
-    const parsed = parseInt(scaleInput, 10);
-    if (Number.isNaN(parsed) || parsed < 0) {
-      const msg = 'Replicas must be a number >= 0.';
-      setActionError(msg);
-      pushToast('error', msg);
-      return;
-    }
-
-    setActionStatus(
-      `Scaling ${selected.namespace}/${selected.name} to ${parsed}…`
-    );
-    setActionError('');
-    pushToast(
-      'info',
-      `Scaling ${selected.namespace}/${selected.name} to ${parsed}…`
-    );
-
-    try {
-      const res = await fetch(
-        `/api/deployments/${encodeURIComponent(
-          selected.namespace
-        )}/${encodeURIComponent(selected.name)}/scale`,
-        {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${token}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ replicas: parsed }),
-        }
-      );
-
-      const text = await res.text();
-      if (!res.ok) {
-        throw new Error(text || 'Scale failed');
-      }
-
-      const msg = text || `Scale requested to ${parsed}`;
-      setActionStatus(msg);
-      pushToast('success', msg);
-      // SSE will update the table
-    } catch (err) {
-      console.error('scale deployment failed', err);
-      const msg = err.message || 'Scale failed';
-      setActionError(msg);
-      pushToast('error', msg);
-    }
-  };
-
-  // Apply bulk replicas in namespace (no confirm dialog)
-  const handleApplyBulk = async () => {
-    if (!isAdmin) return;
-    if (!namespaceFilter || namespaceFilter === 'all') {
-      const msg = 'Select a namespace first for bulk scaling.';
-      setActionError(msg);
-      pushToast('error', msg);
-      return;
-    }
-
-    const parsed = parseInt(bulkScaleInput, 10);
-    if (Number.isNaN(parsed) || parsed < 0) {
-      const msg = 'Bulk replicas must be a number >= 0.';
-      setActionError(msg);
-      pushToast('error', msg);
-      return;
-    }
-
-    setActionStatus(
-      `Bulk scaling namespace ${namespaceFilter} to ${parsed}…`
-    );
-    setActionError('');
-    pushToast(
-      'info',
-      `Bulk scaling namespace ${namespaceFilter} to ${parsed}…`
-    );
-
-    try {
-      const res = await fetch(
-        `/api/deployments/namespace/${encodeURIComponent(
-          namespaceFilter
-        )}/scale-bulk`,
-        {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${token}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ replicas: parsed }),
-        }
-      );
-
-      const text = await res.text();
-      if (!res.ok) {
-        throw new Error(text || 'Bulk scale failed');
-      }
-
-      const msg = text || `Bulk scale requested to ${parsed}`;
-      setActionStatus(msg);
-      pushToast('success', msg);
-      setSelected(null);
-      setDetail(null);
-      // SSE updates the table
-    } catch (err) {
-      console.error('bulk scale failed', err);
-      const msg = err.message || 'Bulk scale failed';
-      setActionError(msg);
-      pushToast('error', msg);
-    }
-  };
-
   return (
     <>
       <section class="grid gap-4 lg:grid-cols-[2fr,1.3fr]">
@@ -433,7 +317,7 @@ export default function DeploymentsPage({ token, user }) {
                 Deployment details
               </h2>
               <p class="text-xs text-slate-500">
-                Summary, containers, labels, annotations and scaling.
+                Summary, containers, labels, annotations (readonly).
               </p>
             </div>
             {selected && (
@@ -443,30 +327,8 @@ export default function DeploymentsPage({ token, user }) {
             )}
           </div>
 
-          {/* Bulk actions bar */}
-          <div class="mb-3 flex flex-wrap items-center justify-between gap-2 text-[11px]">
-            <div class="text-slate-500 font-mono">
-              ns={namespaceFilter === 'all' ? '"all"' : `"${namespaceFilter}"`}
-            </div>
-            {isAdmin && (
-              <div class="flex items-center gap-1">
-                <input
-                  type="number"
-                  min="0"
-                  placeholder="Replicas"
-                  class="w-20 rounded-lg border border-slate-200 bg-white px-2 py-1 text-[11px] text-slate-700 placeholder-slate-400"
-                  value={bulkScaleInput}
-                  onInput={(e) => setBulkScaleInput(e.target.value)}
-                />
-                <button
-                  type="button"
-                  class="rounded-lg border border-slate-300 bg-white px-2 py-1 text-[11px] text-slate-700 hover:bg-slate-100"
-                  onClick={handleApplyBulk}
-                >
-                  Apply bulk replicas
-                </button>
-              </div>
-            )}
+          <div class="mb-3 text-[11px] text-slate-500 font-mono">
+            ns={namespaceFilter === 'all' ? '"all"' : `"${namespaceFilter}"`}
           </div>
 
           {!selected && (
@@ -493,9 +355,6 @@ export default function DeploymentsPage({ token, user }) {
               isAdmin={isAdmin}
               actionStatus={actionStatus}
               actionError={actionError}
-              scaleInput={scaleInput}
-              setScaleInput={setScaleInput}
-              onApplyScale={handleApplyScale}
             />
           )}
         </div>
@@ -555,9 +414,6 @@ function DeploymentDetailPanel({
   isAdmin,
   actionStatus,
   actionError,
-  scaleInput,
-  setScaleInput,
-  onApplyScale,
 }) {
   const labels = detail.labels || {};
   const annotations = detail.annotations || {};
@@ -579,35 +435,8 @@ function DeploymentDetailPanel({
         </span>
       </div>
 
-      {/* Admin vs readonly + actions */}
+      {/* Status */}
       <div class="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 flex flex-col gap-2">
-        <div class="flex items-center justify-between">
-          <div class="text-[11px] text-slate-600 font-mono">
-            mode={isAdmin ? '"admin"' : '"readonly"'}
-          </div>
-          {isAdmin ? (
-            <div class="flex items-center gap-1">
-              <input
-                type="number"
-                min="0"
-                class="w-20 rounded-lg border border-slate-200 bg-white px-2 py-1 text-[11px] text-slate-700"
-                value={scaleInput}
-                onInput={(e) => setScaleInput(e.target.value)}
-              />
-              <button
-                type="button"
-                class="rounded-lg border border-slate-300 bg-white px-2 py-1 text-[11px] text-slate-700 hover:bg-slate-100"
-                onClick={onApplyScale}
-              >
-                Apply replicas
-              </button>
-            </div>
-          ) : (
-            <span class="text-[11px] text-slate-500">
-              read-only user – scaling actions hidden
-            </span>
-          )}
-        </div>
         {actionStatus && (
           <div class="text-[11px] text-emerald-700 font-mono">
             {actionStatus}

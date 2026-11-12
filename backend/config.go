@@ -47,4 +47,14 @@ func loadConfig(path string) {
 	if cfg.Auth.BcryptCost == 0 {
 		cfg.Auth.BcryptCost = 12
 	}
+
+	// Secret-shaped values are meant to come from the environment (backed by
+	// a k8s Secret), not the mounted config.yml ConfigMap -- override here
+	// if set, same pattern as the rest of this project's config handling.
+	if v := os.Getenv("MONGO_URI"); v != "" {
+		cfg.Mongo.URI = v
+	}
+	if v := os.Getenv("JWT_SECRET"); v != "" {
+		cfg.Auth.JWTSecret = v
+	}
 }

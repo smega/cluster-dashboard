@@ -17,7 +17,6 @@ export default function ConfigPage({ token, user }) {
   const [search, setSearch] = useState('');
 
   const [configmaps, setConfigmaps] = useState([]);
-  const [secrets, setSecrets] = useState([]);
 
   const [loading, setLoading] = useState(true);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -94,10 +93,7 @@ export default function ConfigPage({ token, user }) {
       try {
         const qs = `?namespace=${encodeURIComponent(namespaceFilter || 'all')}`;
 
-        const [cmRes, sRes] = await Promise.all([
-          fetch(`/api/kube/configmaps${qs}`, { headers: { Authorization: `Bearer ${token}` } }),
-          fetch(`/api/kube/secrets${qs}`, { headers: { Authorization: `Bearer ${token}` } })
-        ]);
+        const cmRes = await fetch(`/api/kube/configmaps${qs}`, { headers: { Authorization: `Bearer ${token}` } });
 
         const cmText = await cmRes.text();
         if (!cmRes.ok) {
@@ -106,31 +102,17 @@ export default function ConfigPage({ token, user }) {
           throw new Error(msg);
         }
 
-        const sText = await sRes.text();
-        if (!sRes.ok) {
-          let msg = sText || 'Failed to load secrets';
-          try { msg = JSON.parse(sText).error || msg; } catch {}
-          throw new Error(msg);
-        }
-
         const cmData = JSON.parse(cmText);
-        const sData = JSON.parse(sText);
 
         if (cancelled) return;
 
         const cms = Array.isArray(cmData.items) ? cmData.items : [];
-        const secs = Array.isArray(sData.items) ? sData.items : [];
 
         setConfigmaps(cms);
-        setSecrets(secs);
 
         // keep selection if still present
         if (selected) {
-          const exists =
-            (selected.kind === 'ConfigMap' &&
-              cms.some((x) => x.name === selected.name && x.namespace === selected.namespace)) ||
-            (selected.kind === 'Secret' &&
-              secs.some((x) => x.name === selected.name && x.namespace === selected.namespace));
+          const exists = cms.some((x) => x.name === selected.name && x.namespace === selected.namespace);
 
           if (!exists) {
             setSelected(null);
@@ -143,7 +125,6 @@ export default function ConfigPage({ token, user }) {
         if (!cancelled) {
           setError(msg);
           setConfigmaps([]);
-          setSecrets([]);
           setSelected(null);
           setDetail(null);
           pushToast('error', msg);
@@ -173,10 +154,7 @@ export default function ConfigPage({ token, user }) {
         const { kind, namespace, name } = selected;
 
         const q = showValues ? '?includeData=1' : '';
-        const path =
-          kind === 'ConfigMap'
-            ? `/api/kube/configmaps/${encodeURIComponent(namespace)}/${encodeURIComponent(name)}${q}`
-            : `/api/kube/secrets/${encodeURIComponent(namespace)}/${encodeURIComponent(name)}${q}`;
+        const path = `/api/kube/configmaps/${encodeURIComponent(namespace)}/${encodeURIComponent(name)}${q}`;
 
         const res = await fetch(path, { headers: { Authorization: `Bearer ${token}` } });
         const text = await res.text();
@@ -213,30 +191,18 @@ export default function ConfigPage({ token, user }) {
       age: x.age || '-'
     }));
 
-    const sRows = secrets.map((x) => ({
-      kind: 'Secret',
-      name: x.name,
-      namespace: x.namespace,
-      keys: x.keys ?? 0,
-      type: x.type || '',
-      immutable: x.immutable,
-      age: x.age || '-'
-    }));
-
-    return [...cmRows, ...sRows].sort((a, b) => {
+    return [...cmRows].sort((a, b) => {
       if (a.namespace === b.namespace) {
-        if (a.kind === b.kind) return a.name.localeCompare(b.name);
-        return a.kind.localeCompare(b.kind);
+        return a.name.localeCompare(b.name);
       }
       return a.namespace.localeCompare(b.namespace);
     });
-  }, [configmaps, secrets]);
+  }, [configmaps]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return rows.filter((r) => {
       if (kindFilter === 'configmap' && r.kind !== 'ConfigMap') return false;
-      if (kindFilter === 'secret' && r.kind !== 'Secret') return false;
       if (!q) return true;
       return `${r.namespace}/${r.name} ${r.kind} ${r.type}`.toLowerCase().includes(q);
     });
@@ -249,7 +215,7 @@ export default function ConfigPage({ token, user }) {
         <div class="min-w-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
           <div class="flex flex-wrap items-center justify-between gap-3 mb-3">
             <div class="min-w-0">
-              <h2 class="text-sm font-semibold text-slate-800">Config & Secrets</h2>
+              <h2 class="text-sm font-semibold text-slate-800">Config</h2>
               <p class="text-xs text-slate-500">
                 Inventory + optional values (use “Load values” in the detail panel).
               </p>
@@ -274,7 +240,6 @@ export default function ConfigPage({ token, user }) {
               >
                 <option value="all">All</option>
                 <option value="configmap">ConfigMaps</option>
-                <option value="secret">Secrets</option>
               </select>
 
               <input

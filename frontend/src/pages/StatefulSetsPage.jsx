@@ -26,7 +26,6 @@ export default function StatefulSetsPage({ token, user }) {
   const [actionStatus, setActionStatus] = useState('');
   const [actionError, setActionError] = useState('');
 
-  const [scaleValue, setScaleValue] = useState('');
 
   const [toasts, setToasts] = useState([]);
   const pushToast = (type, message) => {
@@ -184,7 +183,6 @@ export default function StatefulSetsPage({ token, user }) {
     setDetailLoading(true);
     setActionStatus('');
     setActionError('');
-    setScaleValue('');
 
     try {
       const res = await fetch(
@@ -202,7 +200,6 @@ export default function StatefulSetsPage({ token, user }) {
       }
       const data = JSON.parse(text);
       setDetail(data);
-      setScaleValue(String(data.desired ?? ''));
     } catch (err) {
       console.error('sts detail fetch failed', err);
       const msg = err.message || 'Failed to load statefulset detail';
@@ -210,109 +207,6 @@ export default function StatefulSetsPage({ token, user }) {
       pushToast('error', msg);
     } finally {
       setDetailLoading(false);
-    }
-  };
-
-  const handleScale = async () => {
-    if (!isAdmin || !selected) return;
-    const n = Number(scaleValue);
-    if (!Number.isFinite(n) || n < 0) {
-      pushToast('error', 'replicas must be a number >= 0');
-      return;
-    }
-
-    setActionError('');
-    setActionStatus(`Scaling ${selected.namespace}/${selected.name} to ${n}…`);
-    pushToast('info', `Scaling ${selected.namespace}/${selected.name} to ${n}…`);
-
-    try {
-      const res = await fetch(
-        `/api/statefulsets/${encodeURIComponent(selected.namespace)}/${encodeURIComponent(selected.name)}/scale`,
-        {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${token}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ replicas: n }),
-        }
-      );
-
-      const text = await res.text();
-      if (!res.ok) {
-        let msg = text || 'Scale failed';
-        try {
-          const obj = JSON.parse(text);
-          msg = obj.error || msg;
-        } catch {}
-        throw new Error(msg);
-      }
-
-      const obj = (() => {
-        try { return JSON.parse(text); } catch { return null; }
-      })();
-
-      const msg = obj?.message || `Scale requested`;
-      setActionStatus(msg);
-      pushToast('success', msg);
-
-      // refresh detail quickly
-      await handleSelect(selected);
-    } catch (err) {
-      console.error('scale sts failed', err);
-      const msg = err.message || 'Scale failed';
-      setActionError(msg);
-      pushToast('error', msg);
-    }
-  };
-
-  const handleBulkScaleFiltered = async () => {
-    if (!isAdmin) return;
-    if (namespaceFilter === 'all') {
-      pushToast('error', 'Select a namespace first (bulk scale is namespace-scoped).');
-      return;
-    }
-    const n = Number(scaleValue);
-    if (!Number.isFinite(n) || n < 0) {
-      pushToast('error', 'replicas must be a number >= 0');
-      return;
-    }
-
-    const names = filtered.map((x) => x.name);
-
-    pushToast('info', `Bulk scaling ${namespaceFilter} (${names.length} item(s)) to ${n}…`);
-
-    try {
-      const res = await fetch(
-        `/api/statefulsets/namespace/${encodeURIComponent(namespaceFilter)}/scale-bulk`,
-        {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${token}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ replicas: n, names }),
-        }
-      );
-      const text = await res.text();
-      if (!res.ok) {
-        let msg = text || 'Bulk scale failed';
-        try {
-          const obj = JSON.parse(text);
-          msg = obj.error || msg;
-        } catch {}
-        throw new Error(msg);
-      }
-      const obj = (() => { try { return JSON.parse(text); } catch { return null; } })();
-      const msg =
-        obj
-          ? `Bulk scale: ok=${obj.okCount} failed=${obj.failCount}`
-          : 'Bulk scale done';
-      pushToast('success', msg);
-      setReloadTick((r) => r + 1);
-    } catch (err) {
-      console.error('bulk scale failed', err);
-      pushToast('error', err.message || 'Bulk scale failed');
     }
   };
 
@@ -325,7 +219,7 @@ export default function StatefulSetsPage({ token, user }) {
             <div>
               <h2 class="text-sm font-semibold text-slate-800">StatefulSets</h2>
               <p class="text-xs text-slate-500">
-                List, filter, inspect and scale StatefulSets (live updates).
+                List, filter and inspect StatefulSets (live updates, readonly).
               </p>
             </div>
 
@@ -470,11 +364,6 @@ export default function StatefulSetsPage({ token, user }) {
             <DetailPanel
               detail={detail}
               isAdmin={isAdmin}
-              scaleValue={scaleValue}
-              setScaleValue={setScaleValue}
-              onScale={handleScale}
-              onBulkScale={handleBulkScaleFiltered}
-              namespaceFilter={namespaceFilter}
               actionStatus={actionStatus}
               actionError={actionError}
             />
@@ -523,12 +412,6 @@ function StatusBadge({ status }) {
 
 function DetailPanel({
   detail,
-  isAdmin,
-  scaleValue,
-  setScaleValue,
-  onScale,
-  onBulkScale,
-  namespaceFilter,
   actionStatus,
   actionError,
 }) {
@@ -556,41 +439,8 @@ function DetailPanel({
         </div>
       )}
 
-      {/* Admin scale controls */}
-      {isAdmin && (
-        <div class="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 space-y-2">
-          <div class="flex items-center justify-between">
-            <div class="text-[11px] text-slate-600 font-mono">
-              mode="admin"
-            </div>
-            {namespaceFilter !== 'all' && (
-              <button
-                type="button"
-                class="rounded-lg border border-slate-300 bg-white px-2 py-1 text-[11px] text-slate-700 hover:bg-slate-100"
-                onClick={onBulkScale}
-              >
-                Bulk scale filtered in ns
-              </button>
-            )}
-          </div>
-
-          <div class="flex items-center gap-2">
-            <input
-              type="number"
-              min="0"
-              class="w-28 rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700"
-              value={scaleValue}
-              onInput={(e) => setScaleValue(e.target.value)}
-            />
-            <button
-              type="button"
-              class="rounded-lg border border-slate-300 bg-white px-2 py-1 text-[11px] text-slate-700 hover:bg-slate-100"
-              onClick={onScale}
-            >
-              Scale
-            </button>
-          </div>
-
+      {(actionStatus || actionError) && (
+        <div class="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 space-y-1">
           {actionStatus && (
             <div class="text-[11px] text-emerald-700 font-mono">{actionStatus}</div>
           )}
