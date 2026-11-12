@@ -321,67 +321,60 @@ export default function EventsPage({ token, user }) {
           )}
 
           {!loading && !error && (
-            <div class="overflow-x-auto">
-              <table class="min-w-full text-xs border-separate border-spacing-y-[3px]">
-                <thead>
-                  <tr class="text-[11px] text-slate-500">
-                    <th class="text-left font-medium px-2 py-1">Type</th>
-                    <th class="text-left font-medium px-2 py-1">Reason</th>
-                    <th class="text-left font-medium px-2 py-1">Namespace</th>
-                    <th class="text-left font-medium px-2 py-1">Object</th>
-                    <th class="text-left font-medium px-2 py-1">Message</th>
-                    <th class="text-left font-medium px-2 py-1">Count</th>
-                    <th class="text-left font-medium px-2 py-1">Last</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filtered.map((e, idx) => {
-                    const ns = e.namespace || e.metadata?.namespace || '-';
-                    const reason = e.reason || '-';
-                    const msg = e.message || '-';
-                    const typ = e.type || e.eventType || '-';
-                    const cnt = e.count ?? e.series?.count ?? '-';
-                    const last = e.lastSeen || e.lastTimestamp || e.eventTime || pickEventTs(e);
-                    const key = eventKey(e, idx);
+            <div class="space-y-1.5 max-h-[70vh] overflow-y-auto pr-1">
+              {filtered.map((e, idx) => {
+                const ns = e.namespace || e.metadata?.namespace || '-';
+                const reason = e.reason || 'Event';
+                const msg = e.message || '';
+                const typ = e.type || e.eventType || '-';
+                const cnt = e.count ?? e.series?.count ?? 1;
+                const last = e.lastSeen || e.lastTimestamp || e.eventTime || pickEventTs(e);
+                const key = eventKey(e, idx);
+                const isWarn = String(typ).toLowerCase() === 'warning';
 
-                    const isSel =
-                      selected && eventKey(selected, -1) === key;
+                const isSel = selected && eventKey(selected, -1) === key;
 
-                    return (
-                      <tr
-                        key={key}
-                        class={
-                          'cursor-pointer bg-slate-50 hover:bg-slate-100 ' +
-                          (isSel ? 'outline outline-1 outline-emerald-400/70' : '')
-                        }
-                        onClick={() => setSelected(e)}
-                      >
-                        <td class="px-2 py-1 align-top text-[11px]">
-                          <EventTypeBadge type={typ} />
-                        </td>
-                        <td class="px-2 py-1 align-top text-[11px] text-slate-700 font-mono">
-                          {reason}
-                        </td>
-                        <td class="px-2 py-1 align-top text-[11px] text-slate-600 font-mono">
-                          {ns}
-                        </td>
-                        <td class="px-2 py-1 align-top text-[11px] text-slate-700 font-mono">
-                          {buildObjectRef(e)}
-                        </td>
-                        <td class="px-2 py-1 align-top text-[11px] text-slate-700">
-                          <div class="max-w-[520px] truncate">{msg}</div>
-                        </td>
-                        <td class="px-2 py-1 align-top text-[11px] text-slate-700 font-mono">
-                          {String(cnt)}
-                        </td>
-                        <td class="px-2 py-1 align-top text-[11px] text-slate-600 font-mono">
-                          {e.age ? e.age : fmtTs(last)}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+                return (
+                  <div
+                    key={key}
+                    class={
+                      'flex gap-3 cursor-pointer rounded-xl border px-3 py-2 transition-colors ' +
+                      (isSel
+                        ? 'border-emerald-400/70 bg-emerald-50/40'
+                        : 'border-slate-200 bg-slate-50 hover:bg-slate-100')
+                    }
+                    onClick={() => setSelected(e)}
+                  >
+                    <div
+                      class={
+                        'mt-1 h-2 w-2 shrink-0 rounded-full ' +
+                        (isWarn ? 'bg-rose-500' : 'bg-emerald-500')
+                      }
+                    />
+                    <div class="min-w-0 flex-1">
+                      <div class="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px]">
+                        <span class="font-semibold text-slate-800">{reason}</span>
+                        <span class="font-mono text-slate-500 break-all">{buildObjectRef(e)}</span>
+                        {Number(cnt) > 1 && (
+                          <span class="rounded-full bg-slate-100 border border-slate-200 px-1.5 py-0.5 text-[10px] font-mono text-slate-600">
+                            ×{cnt}
+                          </span>
+                        )}
+                      </div>
+                      {msg && (
+                        <div class="mt-0.5 text-[11px] text-slate-600 line-clamp-2 break-words">
+                          {msg}
+                        </div>
+                      )}
+                      <div class="mt-1 flex items-center gap-2 text-[10px] text-slate-400 font-mono">
+                        <span>{ns}</span>
+                        <span>•</span>
+                        <span>{e.age ? e.age : fmtTs(last)}</span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
 
               {filtered.length === 0 && (
                 <div class="mt-3 text-xs text-slate-500">
