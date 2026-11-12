@@ -50,6 +50,14 @@ function defaultKindEnabled() {
   };
 }
 
+function truncateMiddle(s, max) {
+  if (!s || s.length <= max) return s || "";
+  const keep = max - 1;
+  const head = Math.ceil(keep / 2);
+  const tail = Math.floor(keep / 2);
+  return `${s.slice(0, head)}…${s.slice(s.length - tail)}`;
+}
+
 function buildCyElements(graph, filters) {
   const q = (filters.search || "").trim().toLowerCase();
   const onlyUnhealthy = !!filters.onlyUnhealthy;
@@ -77,7 +85,7 @@ function buildCyElements(graph, filters) {
     nodes.push({
       data: {
         id: n.id,
-        label: `${kind}\n${n.name || ""}${status ? `\n${status}` : ""}`, // ✅ status line
+        label: `${kind}\n${truncateMiddle(n.name || "", 18)}${status ? `\n${status}` : ""}`,
         kind,
         name: n.name,
         namespace: n.namespace,
@@ -307,6 +315,12 @@ export default function TopologyPage({ token, user }) {
 
   const effectiveNamespace = nsMode === "custom" ? (customNS || "default") : namespace;
 
+  // Re-run the initial layout when the namespace changes, since the new
+  // node set has no prior positions (otherwise they'd all stack at origin).
+  useEffect(() => {
+    if (cyRef.current) cyRef.current.__laidOutOnce = false;
+  }, [effectiveNamespace]);
+
   const cyElements = useMemo(() => buildCyElements(graph, filters), [graph, filters]);
 
   // Init cytoscape once
@@ -325,28 +339,28 @@ export default function TopologyPage({ token, user }) {
           style: {
             label: "data(label)",
             "text-wrap": "wrap",
-            "text-max-width": 130,
-            "font-size": 9,
+            "text-max-width": 58,
+            "font-size": 8,
             "text-valign": "center",
             "text-halign": "center",
             color: "#0b1220",
             "background-opacity": 0.95,
             "border-width": 1,
             "border-color": "#243046",
-            width: 54,
-            height: 54,
+            width: 64,
+            height: 64,
           },
         },
-        { selector: 'node[kind = "Pod"]', style: { shape: "round-rectangle", width: 66, height: 48 } },
-        { selector: 'node[kind = "Service"]', style: { shape: "rectangle", width: 66, height: 44 } },
-        { selector: 'node[kind = "Ingress"]', style: { shape: "diamond", width: 54, height: 54 } },
+        { selector: 'node[kind = "Pod"]', style: { shape: "round-rectangle", width: 92, height: 60, "text-max-width": 82 } },
+        { selector: 'node[kind = "Service"]', style: { shape: "rectangle", width: 92, height: 56, "text-max-width": 82 } },
+        { selector: 'node[kind = "Ingress"]', style: { shape: "diamond", width: 86, height: 86, "text-max-width": 48 } },
         {
           selector:
             'node[kind = "Deployment"], node[kind = "StatefulSet"], node[kind = "DaemonSet"], node[kind="ReplicaSet"]',
-          style: { shape: "hexagon", width: 66, height: 66 },
+          style: { shape: "hexagon", width: 92, height: 92, "text-max-width": 62 },
         },
-        { selector: 'node[kind = "Container"]', style: { shape: "ellipse", width: 32, height: 32, "font-size": 8 } },
-        { selector: 'node[kind = "PublicEndpoint"]', style: { shape: "triangle", width: 40, height: 40, "font-size": 8 } },
+        { selector: 'node[kind = "Container"]', style: { shape: "ellipse", width: 48, height: 48, "font-size": 7, "text-max-width": 36 } },
+        { selector: 'node[kind = "PublicEndpoint"]', style: { shape: "triangle", width: 64, height: 64, "font-size": 7, "text-max-width": 36 } },
 
         { selector: 'node[tone = "ready"]', style: { "background-color": "#bbf7d0", "border-color": "#16a34a" } },
         { selector: 'node[tone = "progress"]', style: { "background-color": "#fde68a", "border-color": "#d97706" } },
@@ -421,7 +435,7 @@ export default function TopologyPage({ token, user }) {
     if (!cy.__laidOutOnce && (graph?.nodes || []).length > 0) {
       cy.__laidOutOnce = true;
       try {
-        cy.layout({ name: "cose", animate: true, randomize: false, fit: true, padding: 40 }).run();
+        cy.layout({ name: "cose", animate: true, randomize: true, fit: true, padding: 40 }).run();
       } catch {}
     }
   }, [cyElements, graph]);
@@ -606,6 +620,39 @@ export default function TopologyPage({ token, user }) {
               >
                 Fit
               </button>
+
+              <div class="inline-flex items-center rounded-lg border border-slate-300 bg-white overflow-hidden">
+                <button
+                  type="button"
+                  aria-label="Zoom out"
+                  class="px-2 py-1 text-[11px] text-slate-700 hover:bg-slate-100 border-r border-slate-300"
+                  onClick={() => {
+                    const cy = cyRef.current;
+                    if (!cy) return;
+                    try {
+                      const level = cy.zoom() * 0.8;
+                      cy.animate({ zoom: level, center: { eles: cy.elements() } }, { duration: 150 });
+                    } catch {}
+                  }}
+                >
+                  −
+                </button>
+                <button
+                  type="button"
+                  aria-label="Zoom in"
+                  class="px-2 py-1 text-[11px] text-slate-700 hover:bg-slate-100"
+                  onClick={() => {
+                    const cy = cyRef.current;
+                    if (!cy) return;
+                    try {
+                      const level = cy.zoom() * 1.25;
+                      cy.animate({ zoom: level, center: { eles: cy.elements() } }, { duration: 150 });
+                    } catch {}
+                  }}
+                >
+                  +
+                </button>
+              </div>
             </div>
           </div>
 
