@@ -1,0 +1,31 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: dashboard-create-user
+  namespace: public-dashboard
+spec:
+  backoffLimit: 0
+  ttlSecondsAfterFinished: 300
+  template:
+    spec:
+      restartPolicy: Never
+      imagePullSecrets:
+        - name: zot-registry
+      containers:
+        - name: create-user
+          image: registry.smdoes.eu/raspberry/dashboard-create-user:latest
+          imagePullPolicy: Always
+          env:
+            - name: MONGO_URI
+              valueFrom:
+                secretKeyRef:
+                  name: dashboard-secrets
+                  key: mongo_uri
+            - name: MONGO_DB
+              value: "dashboard"
+            - name: NEW_USER_EMAIL
+              value: "user@example.com"
+            - name: NEW_USER_PASSWORD_HASH
+              value: "$2a$12$REPLACE_WITH_OUTPUT_OF_hash_password.go"
+            - name: NEW_USER_ROLE
+              value: "readonly"
