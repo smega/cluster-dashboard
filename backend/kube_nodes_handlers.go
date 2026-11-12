@@ -23,6 +23,7 @@ const gkeNodepoolLabel = "cloud.google.com/gke-nodepool"
 
 type NodeItem struct {
 	Name        string `json:"name"`
+	DisplayName string `json:"displayName"`
 	Ready       bool   `json:"ready"`
 	ReadyReason string `json:"readyReason,omitempty"`
 
@@ -67,7 +68,8 @@ type NodeConditionItem struct {
 }
 
 type NodeDetail struct {
-	Name string `json:"name"`
+	Name        string `json:"name"`
+	DisplayName string `json:"displayName"`
 
 	Ready       bool   `json:"ready"`
 	ReadyReason string `json:"readyReason,omitempty"`
@@ -126,6 +128,7 @@ func nodesListHandler(c *gin.Context) {
 		return
 	}
 
+	friendlyNames := buildFriendlyNodeNames(nl.Items)
 	metricsByNode, metricsOK, metricsWarn := loadNodeMetrics(ctx)
 
 	now := time.Now()
@@ -159,6 +162,7 @@ func nodesListHandler(c *gin.Context) {
 
 		items = append(items, NodeItem{
 			Name:           n.Name,
+			DisplayName:    friendlyNames[n.Name],
 			Ready:          ready,
 			ReadyReason:    readyReason,
 			Schedulable:    sched,
@@ -266,6 +270,11 @@ func nodeDetailHandler(c *gin.Context) {
 		return
 	}
 
+	displayName := name
+	if nl, err := kubeClient.CoreV1().Nodes().List(ctx, metav1.ListOptions{}); err == nil {
+		displayName = buildFriendlyNodeNames(nl.Items)[name]
+	}
+
 	ready, readyReason := nodeReady(n)
 	sched := !n.Spec.Unschedulable
 
@@ -302,6 +311,7 @@ func nodeDetailHandler(c *gin.Context) {
 
 	out := NodeDetail{
 		Name:         n.Name,
+		DisplayName:  displayName,
 		Ready:        ready,
 		ReadyReason:  readyReason,
 		Schedulable:  sched,
@@ -429,6 +439,36 @@ func nodeReady(n *corev1.Node) (bool, string) {
 		}
 	}
 	return false, "Unknown"
+}
+
+// buildFriendlyNodeNames assigns a stable, non-identifying display label to
+// each node (e.g. "Pi #1 - control plane") instead of the real hostname, so
+// the public dashboard doesn't advertise raw node identity. Numbering is
+// derived from sorted node name, so it stays stable across requests as long
+// as the node set doesn't change.
+func buildFriendlyNodeNames(nodes []corev1.Node) map[string]string {
+	sorted := append([]corev1.Node(nil), nodes...)
+	sort.Slice(sorted, func(i, j int) bool { return sorted[i].Name < sorted[j].Name })
+
+	out := make(map[string]string, len(sorted))
+	for i := range sorted {
+		role := "worker"
+		if isControlPlaneNode(&sorted[i]) {
+			role = "control plane"
+		}
+		out[sorted[i].Name] = fmt.Sprintf("Pi #%d - %s", i+1, role)
+	}
+	return out
+}
+
+func isControlPlaneNode(n *corev1.Node) bool {
+	if _, ok := n.Labels["node-role.kubernetes.io/control-plane"]; ok {
+		return true
+	}
+	if _, ok := n.Labels["node-role.kubernetes.io/master"]; ok {
+		return true
+	}
+	return false
 }
 
 func nodePoolName(n *corev1.Node) string {

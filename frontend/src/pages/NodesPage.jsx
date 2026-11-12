@@ -301,7 +301,7 @@ export default function NodesPage({ token, user }) {
                     >
                       <td class="px-2 py-1 align-top">
                         <div class="font-mono text-[11px] text-slate-800">
-                          {n.name}
+                          {n.displayName || n.name}
                         </div>
                         {(n.zone || n.instanceType) && (
                           <div class="text-[11px] text-slate-500 font-mono">
@@ -361,7 +361,7 @@ export default function NodesPage({ token, user }) {
             </div>
             {selected && (
               <div class="text-[11px] text-slate-500 font-mono text-right">
-                {selected.name}
+                {selected.displayName || selected.name}
               </div>
             )}
           </div>
@@ -431,7 +431,7 @@ function MiniTop({ title, items, onPick }) {
               onClick={() => onPick(n)}
             >
               <div class="flex items-center justify-between">
-                <span class="font-mono text-[11px] text-slate-800">{n.name}</span>
+                <span class="font-mono text-[11px] text-slate-800">{n.displayName || n.name}</span>
                 <span class="font-mono text-[11px] text-slate-600">
                   cpu={fmtPct(n.cpuPct)} mem={fmtPct(n.memPct)}
                 </span>
