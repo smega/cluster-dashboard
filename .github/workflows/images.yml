@@ -1,0 +1,76 @@
+# Push to main -> build the images whose directory changed, with the
+# shared build/scan/sign workflow from smega/raspberry-k3s (the cluster
+# this dashboard runs on). Flux in that cluster picks up the new tags.
+#
+# Only push and manual runs, never pull requests: the registry secrets
+# must not be reachable from a fork's PR.
+name: images
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - backend/**
+      - frontend/**
+      - .github/workflows/images.yml
+  workflow_dispatch:
+    inputs:
+      all:
+        description: Build every image, changed or not
+        type: boolean
+        default: false
+
+concurrency:
+  group: images-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  changes:
+    runs-on: ubuntu-24.04-arm
+    outputs:
+      backend: ${{ steps.f.outputs.backend == 'true' || inputs.all == true }}
+      web: ${{ steps.f.outputs.web == 'true' || inputs.all == true }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: f
+        with:
+          filters: |
+            backend:
+              - backend/**
+              - '!backend/tools/**'
+            web:
+              - frontend/**
+
+  dashboard-backend:
+    needs: changes
+    if: needs.changes.outputs.backend == 'true'
+    uses: smega/raspberry-k3s/.github/workflows/build-image.yml@main
+    permissions:
+      contents: read
+      id-token: write
+      security-events: write
+    with:
+      image: dashboard-backend
+      context: backend
+    secrets:
+      REGISTRY_USERNAME: ${{ secrets.REGISTRY_USERNAME }}
+      REGISTRY_PASSWORD: ${{ secrets.REGISTRY_PASSWORD }}
+
+  dashboard-web:
+    needs: changes
+    if: needs.changes.outputs.web == 'true'
+    uses: smega/raspberry-k3s/.github/workflows/build-image.yml@main
+    permissions:
+      contents: read
+      id-token: write
+      security-events: write
+    with:
+      image: dashboard-web
+      context: frontend
+    secrets:
+      REGISTRY_USERNAME: ${{ secrets.REGISTRY_USERNAME }}
+      REGISTRY_PASSWORD: ${{ secrets.REGISTRY_PASSWORD }}
