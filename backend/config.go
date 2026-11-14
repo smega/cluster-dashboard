@@ -25,6 +25,12 @@ type Config struct {
 	Kube struct {
 		Kubeconfig string `yaml:"kubeconfig"` // for local dev only; empty in GKE
 	} `yaml:"kube"`
+
+	// Source of the Overview sparklines (kube_metrics_history.go). Empty:
+	// the history endpoint returns no samples and a warning.
+	Prometheus struct {
+		URL string `yaml:"url"`
+	} `yaml:"prometheus"`
 }
 
 var cfg Config
@@ -56,5 +62,8 @@ func loadConfig(path string) {
 	}
 	if v := os.Getenv("JWT_SECRET"); v != "" {
 		cfg.Auth.JWTSecret = v
+	}
+	if v := os.Getenv("PROMETHEUS_URL"); v != "" {
+		cfg.Prometheus.URL = v
 	}
 }

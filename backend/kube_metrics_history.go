@@ -2,13 +2,16 @@ package main
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"net/http"
+	"net/url"
+	"sort"
+	"strconv"
 	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	metricsclient "k8s.io/metrics/pkg/client/clientset/versioned"
 )
 
 // MetricsHistorySample is one cluster-wide usage sample for the Overview
@@ -20,110 +23,139 @@ type MetricsHistorySample struct {
 	MemPct float64 `json:"memPct"`
 }
 
-// metricsHistoryCapacity * metricsHistoryInterval = ~20 minutes of trend,
-// which is enough for a sparkline without needing a real time-series store.
+// metricsHistoryWindow / metricsHistoryStep = 40 points over ~20 minutes,
+// the same trend the old in-memory ring buffer kept.
 const (
-	metricsHistoryCapacity = 40
-	metricsHistoryInterval = 30 * time.Second
+	metricsHistoryWindow = 20 * time.Minute
+	metricsHistoryStep   = 30 * time.Second
+	// Two backend replicas (and every open tab) share one Prometheus; a
+	// short cache keeps the sparkline polling from turning into load.
+	metricsHistoryCacheTTL = 15 * time.Second
+)
+
+// The history comes from Prometheus (kube-prometheus-stack in the cluster)
+// rather than from samples kept in this process, so every backend replica
+// draws the same chart and a restart doesn't wipe it.
+//
+// CPU: node-exporter busy time over allocatable cores. Memory: working set
+// (total - free - inactive file cache, roughly what metrics-server reports)
+// over allocatable memory.
+const (
+	cpuHistoryQuery = `100 * sum(rate(node_cpu_seconds_total{mode!~"idle|iowait|steal"}[2m]))` +
+		` / sum(kube_node_status_allocatable{resource="cpu"})`
+	memHistoryQuery = `100 * sum(node_memory_MemTotal_bytes - node_memory_MemFree_bytes - node_memory_Inactive_file_bytes)` +
+		` / sum(kube_node_status_allocatable{resource="memory"})`
 )
 
 var (
-	metricsHistoryMu  sync.RWMutex
-	metricsHistory    = make([]MetricsHistorySample, 0, metricsHistoryCapacity)
-	metricsHistoryErr string
+	metricsHistoryMu      sync.Mutex
+	metricsHistoryCache   []MetricsHistorySample
+	metricsHistoryCacheAt time.Time
+	metricsHistoryClient  = &http.Client{Timeout: 10 * time.Second}
 )
-
-// startMetricsHistoryCollector periodically samples cluster-wide CPU/mem
-// usage (metrics-server) into an in-memory ring buffer. Best-effort: if
-// metrics-server is unavailable, samples are simply skipped and the last
-// error is surfaced to the API so the UI can show a warning instead of an
-// empty chart with no explanation.
-func startMetricsHistoryCollector() {
-	go func() {
-		collectMetricsHistorySample()
-		ticker := time.NewTicker(metricsHistoryInterval)
-		defer ticker.Stop()
-		for range ticker.C {
-			collectMetricsHistorySample()
-		}
-	}()
-}
-
-func collectMetricsHistorySample() {
-	if kubeClient == nil {
-		return
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	kcfg, err := kubeRestConfig()
-	if err != nil {
-		setMetricsHistoryErr(err.Error())
-		return
-	}
-	mcs, err := metricsclient.NewForConfig(kcfg)
-	if err != nil {
-		setMetricsHistoryErr(err.Error())
-		return
-	}
-
-	nodeMetrics, err := mcs.MetricsV1beta1().NodeMetricses().List(ctx, metav1.ListOptions{})
-	if err != nil {
-		setMetricsHistoryErr(err.Error())
-		return
-	}
-
-	nodes, err := kubeClient.CoreV1().Nodes().List(ctx, metav1.ListOptions{})
-	if err != nil {
-		setMetricsHistoryErr(err.Error())
-		return
-	}
-
-	var allocCPUMilli, allocMemBytes int64
-	for i := range nodes.Items {
-		allocCPUMilli += nodes.Items[i].Status.Allocatable.Cpu().MilliValue()
-		allocMemBytes += nodes.Items[i].Status.Allocatable.Memory().Value()
-	}
-
-	var useCPUMilli, useMemBytes int64
-	for i := range nodeMetrics.Items {
-		useCPUMilli += nodeMetrics.Items[i].Usage.Cpu().MilliValue()
-		useMemBytes += nodeMetrics.Items[i].Usage.Memory().Value()
-	}
-
-	sample := MetricsHistorySample{Ts: time.Now().UnixMilli()}
-	if allocCPUMilli > 0 {
-		sample.CPUPct = clampPct(float64(useCPUMilli) / float64(allocCPUMilli) * 100)
-	}
-	if allocMemBytes > 0 {
-		sample.MemPct = clampPct(float64(useMemBytes) / float64(allocMemBytes) * 100)
-	}
-
-	metricsHistoryMu.Lock()
-	metricsHistoryErr = ""
-	metricsHistory = append(metricsHistory, sample)
-	if len(metricsHistory) > metricsHistoryCapacity {
-		metricsHistory = metricsHistory[len(metricsHistory)-metricsHistoryCapacity:]
-	}
-	metricsHistoryMu.Unlock()
-}
-
-func setMetricsHistoryErr(msg string) {
-	metricsHistoryMu.Lock()
-	metricsHistoryErr = msg
-	metricsHistoryMu.Unlock()
-}
 
 // GET /api/kube/metrics/history
 func metricsHistoryHandler(c *gin.Context) {
-	metricsHistoryMu.RLock()
-	samples := append([]MetricsHistorySample(nil), metricsHistory...)
-	errMsg := metricsHistoryErr
-	metricsHistoryMu.RUnlock()
+	if cfg.Prometheus.URL == "" {
+		c.JSON(http.StatusOK, gin.H{"samples": []MetricsHistorySample{}, "warning": "Prometheus URL not configured"})
+		return
+	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"samples": samples,
-		"warning": errMsg,
-	})
+	metricsHistoryMu.Lock()
+	defer metricsHistoryMu.Unlock()
+
+	if time.Since(metricsHistoryCacheAt) > metricsHistoryCacheTTL {
+		samples, err := fetchMetricsHistory(c.Request.Context())
+		if err != nil {
+			// Keep showing the last good chart, with the reason why it's stale.
+			c.JSON(http.StatusOK, gin.H{"samples": metricsHistoryCache, "warning": err.Error()})
+			return
+		}
+		metricsHistoryCache = samples
+		metricsHistoryCacheAt = time.Now()
+	}
+
+	c.JSON(http.StatusOK, gin.H{"samples": metricsHistoryCache, "warning": ""})
+}
+
+func fetchMetricsHistory(ctx context.Context) ([]MetricsHistorySample, error) {
+	end := time.Now().Truncate(metricsHistoryStep)
+	start := end.Add(-metricsHistoryWindow)
+
+	cpu, err := promQueryRange(ctx, cpuHistoryQuery, start, end, metricsHistoryStep)
+	if err != nil {
+		return nil, fmt.Errorf("cpu history: %w", err)
+	}
+	mem, err := promQueryRange(ctx, memHistoryQuery, start, end, metricsHistoryStep)
+	if err != nil {
+		return nil, fmt.Errorf("memory history: %w", err)
+	}
+
+	samples := make([]MetricsHistorySample, 0, len(cpu))
+	for ts, cpuPct := range cpu {
+		memPct, ok := mem[ts]
+		if !ok {
+			continue
+		}
+		samples = append(samples, MetricsHistorySample{Ts: ts, CPUPct: clampPct(cpuPct), MemPct: clampPct(memPct)})
+	}
+	sort.Slice(samples, func(i, j int) bool { return samples[i].Ts < samples[j].Ts })
+	return samples, nil
+}
+
+// promQueryRange runs a range query that returns a single series and gives
+// back its values keyed by timestamp (unix millis).
+func promQueryRange(ctx context.Context, query string, start, end time.Time, step time.Duration) (map[int64]float64, error) {
+	params := url.Values{}
+	params.Set("query", query)
+	params.Set("start", strconv.FormatInt(start.Unix(), 10))
+	params.Set("end", strconv.FormatInt(end.Unix(), 10))
+	params.Set("step", strconv.Itoa(int(step.Seconds())))
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, cfg.Prometheus.URL+"/api/v1/query_range?"+params.Encode(), nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := metricsHistoryClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	var body struct {
+		Status string `json:"status"`
+		Error  string `json:"error"`
+		Data   struct {
+			Result []struct {
+				Values [][2]any `json:"values"`
+			} `json:"result"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		return nil, fmt.Errorf("prometheus: %s: %w", resp.Status, err)
+	}
+	if body.Status != "success" {
+		return nil, fmt.Errorf("prometheus: %s", body.Error)
+	}
+
+	out := map[int64]float64{}
+	if len(body.Data.Result) == 0 {
+		return out, nil
+	}
+	for _, v := range body.Data.Result[0].Values {
+		ts, ok := v[0].(float64)
+		if !ok {
+			continue
+		}
+		s, ok := v[1].(string)
+		if !ok {
+			continue
+		}
+		f, err := strconv.ParseFloat(s, 64)
+		if err != nil {
+			continue
+		}
+		out[int64(ts*1000)] = f
+	}
+	return out, nil
 }

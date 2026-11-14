@@ -27,8 +27,6 @@ func main() {
 	topo = NewTopologyManager(kubeClient)
 	go topo.Start(context.Background())
 
-	startMetricsHistoryCollector()
-
 	r := setupRouter()
 
 	log.Printf("Listening on %s", cfg.Server.Address)
