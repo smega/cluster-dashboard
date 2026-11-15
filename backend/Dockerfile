@@ -21,7 +21,9 @@ RUN CGO_ENABLED=0 GOOS=linux go build -o server .
 # ===========================
 # Stage 2: Minimal runtime
 # ===========================
-FROM gcr.io/distroless/base-debian12
+# static, not base: the binary is CGO_ENABLED=0, so it needs no libc or
+# OpenSSL, and those were most of what Trivy found in base-debian12.
+FROM gcr.io/distroless/static-debian13
 
 WORKDIR /app
 
