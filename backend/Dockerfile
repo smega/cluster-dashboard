@@ -6,6 +6,9 @@ FROM golang:1.27-alpine AS builder
 WORKDIR /app
 
 # 🔧 install git so `go mod download` can fetch cloud.google.com modules
+# Changes daily ( raspberry-k3s build-image.yml ), so this layer isn't
+# served stale from the build cache.
+ARG APK_DAY
 RUN apk upgrade --no-cache && apk add --no-cache git
 
 # Enable modules and download deps

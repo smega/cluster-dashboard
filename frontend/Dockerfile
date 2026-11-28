@@ -17,6 +17,9 @@ RUN npm run build
 FROM nginx:1.30-alpine
 # Pick up Alpine fixes that landed after the nginx image was built
 # (Trivy, 2026-11-15: libxslt).
+# Changes daily ( raspberry-k3s build-image.yml ), so this layer isn't
+# served stale from the build cache.
+ARG APK_DAY
 RUN apk upgrade --no-cache
 
 # Copy static files
